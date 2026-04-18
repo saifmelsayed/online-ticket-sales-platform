@@ -1,0 +1,110 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Event;
+use App\Models\TicketTier;
+use Illuminate\Support\Facades\Storage;
+
+class OrganizerEventService
+{
+    public function __construct(
+        protected AdminService $adminService
+    ) {}
+
+    public function createEvent(array $data, int $organizerUserId): Event
+    {
+        $payload = [
+            'organizer_id' => $organizerUserId,
+            'category_id' => $data['category_id'],
+            'name' => $data['name'],
+            'description' => $data['description'],
+            'event_datetime' => $data['event_datetime'],
+            'is_online' => $data['is_online'],
+            'venue_name' => $data['is_online'] ? null : ($data['venue_name'] ?? null),
+            'venue_address' => $data['is_online'] ? null : ($data['venue_address'] ?? null),
+            'status' => 'upcoming',
+        ];
+
+        if (!empty($data['banner_image']) && $data['banner_image']->isValid()) {
+            $payload['banner_image'] = $data['banner_image']->store('event-banners', 'public');
+        }
+
+        $event = Event::create($payload);
+
+        return $event->load(['category', 'tiers', 'organizer']);
+    }
+
+    public function listMyEvents(int $organizerUserId)
+    {
+        return Event::with(['tiers', 'category', 'organizer'])
+            ->where('organizer_id', $organizerUserId)
+            ->latest()
+            ->get();
+    }
+
+    public function updateEvent(int $eventId, array $data, int $organizerUserId): Event
+    {
+        $event = Event::where('organizer_id', $organizerUserId)->findOrFail($eventId);
+
+        $update = collect($data)->only([
+            'category_id', 'name', 'description', 'event_datetime', 'status',
+        ])->filter(fn ($v) => $v !== null)->all();
+
+        if (array_key_exists('is_online', $data)) {
+            $update['is_online'] = $data['is_online'];
+        }
+
+        $isOnline = $update['is_online'] ?? $event->is_online;
+
+        if ($isOnline) {
+            $update['venue_name'] = null;
+            $update['venue_address'] = null;
+        } else {
+            if (array_key_exists('venue_name', $data)) {
+                $update['venue_name'] = $data['venue_name'];
+            }
+            if (array_key_exists('venue_address', $data)) {
+                $update['venue_address'] = $data['venue_address'];
+            }
+        }
+
+        if (!empty($data['banner_image']) && $data['banner_image']->isValid()) {
+            if ($event->banner_image) {
+                Storage::disk('public')->delete($event->banner_image);
+            }
+            $update['banner_image'] = $data['banner_image']->store('event-banners', 'public');
+        }
+
+        $event->update($update);
+
+        return $event->fresh()->load(['category', 'tiers', 'organizer']);
+    }
+
+    public function addTier(int $eventId, array $tierData, int $organizerUserId): TicketTier
+    {
+        $event = Event::where('organizer_id', $organizerUserId)->findOrFail($eventId);
+
+        return TicketTier::create([
+            'event_id' => $event->id,
+            'name' => $tierData['name'],
+            'base_price' => $tierData['base_price'],
+            'total_seats' => $tierData['total_seats'],
+            'sale_starts_at' => $tierData['sale_starts_at'],
+            'sale_ends_at' => $tierData['sale_ends_at'],
+            'sold_count' => 0,
+            'version' => 1,
+        ]);
+    }
+
+    public function cancelOwnEvent(int $eventId, int $organizerUserId): Event
+    {
+        $event = Event::findOrFail($eventId);
+
+        if ((int) $event->organizer_id !== (int) $organizerUserId) {
+            throw new \InvalidArgumentException('You can only cancel your own events.');
+        }
+
+        return $this->adminService->cancelEventWithRefunds($eventId);
+    }
+}
