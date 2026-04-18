@@ -2,9 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\BookingItem;
 use App\Models\Event;
+use App\Models\SeatReservation;
 use App\Models\TicketTier;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class OrganizerEventService
 {
@@ -95,6 +99,75 @@ class OrganizerEventService
             'sold_count' => 0,
             'version' => 1,
         ]);
+    }
+
+    public function updateTier(int $eventId, int $tierId, array $data, int $organizerUserId): TicketTier
+    {
+        $event = Event::where('organizer_id', $organizerUserId)->findOrFail($eventId);
+        $tier = TicketTier::where('event_id', $event->id)->findOrFail($tierId);
+
+        if (array_key_exists('total_seats', $data)) {
+            $activeReserved = (int) SeatReservation::query()
+                ->where('ticket_tier_id', $tier->id)
+                ->where('status', 'pending')
+                ->where('expires_at', '>', now())
+                ->sum('quantity');
+
+            $minSeats = (int) $tier->sold_count + $activeReserved;
+            if ((int) $data['total_seats'] < $minSeats) {
+                throw ValidationException::withMessages([
+                    'total_seats' => ["Total seats cannot be less than sold ({$tier->sold_count}) plus active holds ({$activeReserved})."],
+                ]);
+            }
+        }
+
+        $saleStarts = array_key_exists('sale_starts_at', $data)
+            ? Carbon::parse($data['sale_starts_at'])
+            : Carbon::parse($tier->sale_starts_at);
+        $saleEnds = array_key_exists('sale_ends_at', $data)
+            ? Carbon::parse($data['sale_ends_at'])
+            : Carbon::parse($tier->sale_ends_at);
+
+        if ($saleEnds->lte($saleStarts)) {
+            throw ValidationException::withMessages([
+                'sale_ends_at' => ['Sale end must be after sale start.'],
+            ]);
+        }
+
+        $update = collect($data)->only([
+            'name', 'base_price', 'total_seats', 'sale_starts_at', 'sale_ends_at',
+        ])->filter(fn ($v) => $v !== null)->all();
+
+        if ($update !== []) {
+            $tier->update($update);
+        }
+
+        return $tier->fresh();
+    }
+
+    public function deleteTier(int $eventId, int $tierId, int $organizerUserId): void
+    {
+        $event = Event::where('organizer_id', $organizerUserId)->findOrFail($eventId);
+        $tier = TicketTier::where('event_id', $event->id)->findOrFail($tierId);
+
+        if ((int) $tier->sold_count > 0) {
+            throw ValidationException::withMessages([
+                'tier' => ['Cannot delete a tier that has sold tickets.'],
+            ]);
+        }
+
+        $hasConfirmedSales = BookingItem::query()
+            ->where('ticket_tier_id', $tier->id)
+            ->whereHas('booking', fn ($q) => $q->where('status', 'confirmed'))
+            ->exists();
+
+        if ($hasConfirmedSales) {
+            throw ValidationException::withMessages([
+                'tier' => ['Cannot delete a tier with confirmed bookings.'],
+            ]);
+        }
+
+        $tier->delete();
     }
 
     public function cancelOwnEvent(int $eventId, int $organizerUserId): Event

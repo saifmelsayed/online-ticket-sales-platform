@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Organizer\StoreEventRequest;
 use App\Http\Requests\Organizer\StoreTicketTierRequest;
 use App\Http\Requests\Organizer\UpdateEventRequest;
+use App\Http\Requests\Organizer\UpdateTicketTierRequest;
 use App\Http\Resources\EventResource;
 use App\Http\Resources\TicketTierResource;
 use App\Services\OrganizerEventService;
@@ -62,6 +63,33 @@ class OrganizerEventController extends Controller
         }
 
         return ApiResponse::success(new TicketTierResource($tier), 'Tier created', 201);
+    }
+
+    public function updateTier(UpdateTicketTierRequest $request, int $eventId, int $tierId)
+    {
+        try {
+            $tier = $this->organizerEventService->updateTier(
+                $eventId,
+                $tierId,
+                $request->validated(),
+                $request->user()->id
+            );
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return ApiResponse::error('Event or tier not found', 404);
+        }
+
+        return ApiResponse::success(new TicketTierResource($tier), 'Tier updated');
+    }
+
+    public function destroyTier(Request $request, int $eventId, int $tierId)
+    {
+        try {
+            $this->organizerEventService->deleteTier($eventId, $tierId, $request->user()->id);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return ApiResponse::error('Event or tier not found', 404);
+        }
+
+        return ApiResponse::success(null, 'Tier deleted');
     }
 
     public function cancel(Request $request, int $eventId)

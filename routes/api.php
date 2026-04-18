@@ -53,5 +53,7 @@ Route::middleware(['auth:sanctum', 'organizer'])->prefix('organizer/events')->gr
     Route::get('/', [OrganizerEventController::class, 'index']);
     Route::put('/{eventId}', [OrganizerEventController::class, 'update']);
     Route::post('/{eventId}/tiers', [OrganizerEventController::class, 'addTier']);
+    Route::put('/{eventId}/tiers/{tierId}', [OrganizerEventController::class, 'updateTier']);
+    Route::delete('/{eventId}/tiers/{tierId}', [OrganizerEventController::class, 'destroyTier']);
     Route::patch('/{eventId}/cancel', [OrganizerEventController::class, 'cancel']);
 });
