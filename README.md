@@ -43,10 +43,6 @@ Laravel API for events, cart holds, credit checkout, customer dashboard, and adm
 | `/api/organizer/events` | Approved organizer |
 | `/api/admin/...` | Admin (`/admin/overview`, cancel event, organizers) |
 
-### Tests
-
-`php artisan test`
-
 ---
 
 ## About Laravel
