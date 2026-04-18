@@ -14,7 +14,6 @@ Laravel API for events, cart holds, credit checkout, customer dashboard, and adm
 ### Requirements
 
 - PHP 8.3+, Composer, MySQL (or SQLite for local/testing)
-- Node is optional unless you use the default Vite frontend assets
 
 ### Setup
 
@@ -28,7 +27,6 @@ Laravel API for events, cart holds, credit checkout, customer dashboard, and adm
 
 `reservations:expire` is scheduled every minute in `routes/console.php`. In production, add a cron entry:
 
-`* * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1`
 
 ### Concurrency (summary)
 
